@@ -47,13 +47,15 @@ export const mintToken = async (
 
   console.log("associatedToken", associatedToken.address.toBase58());
 
+  const tokenAmount = 2 * (amount / LAMPORTS_PER_SOL) * 10 ** 6;
+  console.log("tokenAmount", tokenAmount);
   const mintedToken = await mintTo(
     conn,
     Keypair.fromSecretKey(bs58.decode(privateKey)),
     new PublicKey(MINT_TOKEN_ADDRESS),
     associatedToken.address,
     Keypair.fromSecretKey(bs58.decode(privateKey)),
-    amount * LAMPORTS_PER_SOL,
+    tokenAmount,
     [Keypair.fromSecretKey(bs58.decode(privateKey))],
     {
       skipPreflight: true,

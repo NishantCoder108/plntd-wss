@@ -18,30 +18,31 @@ export const processWebhook = async (
   data: any,
   authorization: string | undefined
 ) => {
-  const {
-    type,
-    nativeTransfers,
-    feePayer,
-    description,
-    tokenTransfers,
-    timestamp,
-    fee,
-    signature,
-  } = data[0];
-
-  const io = socketService.getInstance();
-  const conn = new Connection(RPC_URL);
-
-  console.log({
-    authorization,
-    type,
-    nativeTransfers,
-    feePayer,
-    description,
-    tokenTransfers,
-    signature,
-  });
   try {
+    const {
+      type,
+      nativeTransfers,
+      feePayer,
+      description,
+      tokenTransfers,
+      timestamp,
+      fee,
+      signature,
+    } = data[0];
+
+    const io = socketService.getInstance();
+    const conn = new Connection(RPC_URL);
+
+    console.log({
+      authorization,
+      type,
+      nativeTransfers,
+      feePayer,
+      description,
+      tokenTransfers,
+      signature,
+    });
+
     const mintATAAddress = await getAssociatedTokenAddress(
       new PublicKey(MINT_TOKEN_ADDRESS),
       new PublicKey(stakingPoolWallet),
@@ -163,3 +164,9 @@ export const processWebhook = async (
     return { message: "Internal Server Error at webhookService" };
   }
 };
+
+/*
+
+
+
+*/

@@ -1,9 +1,9 @@
-import { Router } from "express";
+// import { Router } from "express";
 
-import { saveTransactionHandler } from "../controllers/transactionRoutes";
+// import { saveTransactionHandler } from "../controllers/transactionRoutes";
 
-const router = Router();
+// const router = Router();
 
-router.post("/save", saveTransactionHandler);
+// router.post("/save", saveTransactionHandler);
 
-export default router;
+// export default router;

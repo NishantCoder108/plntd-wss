@@ -1,29 +1,10 @@
-// import express from "express";
-// import { createServer } from "http";
-// import { initializeSocket } from "./socket";
-// import dotenv from "dotenv";
-
-// dotenv.config();
-
-// const app = express();
-// const httpServer = createServer(app);
-
-// // Initialize socket.io
-// const io = initializeSocket(httpServer);
-
-// const PORT = process.env.PORT || 4000;
-
-// httpServer.listen(PORT, () => {
-//   console.log(`Server running on port ${PORT}`);
-// });
-
 import "dotenv/config";
 import http from "http";
 import app from "./app";
-// import { connectDB } from "./config/db";
 
 import { socketService } from "./utils/socket";
 import { PORT } from "./config/env";
+import prisma from "./prisma";
 
 const server = http.createServer(app);
 
@@ -36,11 +17,12 @@ try {
 }
 
 server.listen(PORT, async () => {
+  console.log("Server is running on port:", PORT);
   try {
-    // await connectDB();
-    console.log("Server is running on port :", PORT);
+    await prisma.$connect();
+    console.log("Connected to the database");
   } catch (error) {
-    console.log("Failed to connect to DB", error);
+    console.log("Failed to connect to the database", error);
     process.exit(1);
   }
 });
