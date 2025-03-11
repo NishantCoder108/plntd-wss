@@ -9,10 +9,10 @@ import {
   stakingPoolWallet,
 } from "../config/env";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { DBTransaction } from "../models/transactionModel";
 import { socketService } from "../utils/socket";
-import { saveTransaction } from "./transactionService";
+import { saveTransaction } from "./saveTransaction";
 import { burnToken, mintToken, sendNativeToken } from "./transferService";
+import prisma from "../prisma";
 
 export const processWebhook = async (
   data: any,
@@ -41,85 +41,125 @@ export const processWebhook = async (
     tokenTransfers,
     signature,
   });
+  try {
+    const mintATAAddress = await getAssociatedTokenAddress(
+      new PublicKey(MINT_TOKEN_ADDRESS),
+      new PublicKey(stakingPoolWallet),
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+    console.log("mintATAAddress", mintATAAddress.toBase58());
 
-  const mintATAAddress = await getAssociatedTokenAddress(
-    new PublicKey(MINT_TOKEN_ADDRESS),
-    new PublicKey(stakingPoolWallet),
-    false,
-    TOKEN_2022_PROGRAM_ID
-  );
-  console.log({ mintATAAddress });
+    if (type === "TRANSFER" && AUTH_WEBHOOK_HEADERS === authorization) {
+      // const findSignature = await DBTransaction.findOne({
+      //   txnHash: signature,
+      // });
 
-  if (type === "TRANSFER" && AUTH_WEBHOOK_HEADERS === authorization) {
-    const findSignature = await DBTransaction.findOne({
-      txnHash: signature,
-    });
-    if (findSignature) {
-      console.log("Already processed");
-      return { message: "Already processed" };
-    }
-    if (Array.isArray(nativeTransfers) && nativeTransfers.length > 0) {
-      const incomingTxns = nativeTransfers.find(
-        (item: {
-          amount: number;
-          toUserAccount: string;
-          fromUserAccount: string;
-        }) => item.toUserAccount === mintATAAddress.toBase58()
-      );
-
-      console.log({ incomingTxns });
-      if (!incomingTxns) {
-        return { message: "Processing..." };
-      }
-
-      const { amount, fromUserAccount } = nativeTransfers?.[0];
-      io.emit("mintingStart", { message: "Minting in Progress..." });
-
-      await mintToken(fromUserAccount, amount, conn);
-      await saveTransaction(signature, "MINT");
-      io.emit("mintingComplete", {
-        message: "Minting completed successfully. Your assets are now secure.",
+      const findSignature = await prisma.dBTransaction.findUnique({
+        where: {
+          signature,
+        },
       });
-      return;
-    }
 
-    if (Array.isArray(tokenTransfers) && tokenTransfers.length > 0) {
-      console.log("tokenTransfers nSol", tokenTransfers[0]);
+      console.log({ findSignature });
+      if (findSignature) {
+        console.log("Already processed");
+        return { message: "Already processed" };
+      }
+      if (Array.isArray(nativeTransfers) && nativeTransfers.length > 0) {
+        const incomingTxns = nativeTransfers.find(
+          (item: {
+            amount: number;
+            toUserAccount: string;
+            fromUserAccount: string;
+          }) => item.toUserAccount === mintATAAddress.toBase58()
+        );
 
-      const incomingStakeTxns = tokenTransfers.find(
-        (item) => item.toTokenAccount === mintATAAddress.toBase58()
-      );
+        console.log({ incomingTxns });
+        if (!incomingTxns) {
+          return { message: "Processing..." };
+        }
 
-      if (!incomingStakeTxns) {
-        return { message: "Processing..." };
+        const { amount, fromUserAccount, toUserAccount } = nativeTransfers?.[0];
+        io.emit("mintingStart", { message: "Minting in Progress..." });
+
+        await mintToken(fromUserAccount, amount, conn);
+        await saveTransaction({
+          signature: signature,
+          adminWalletAddress: fromUserAccount,
+          amount: amount,
+          fromUserAccount: fromUserAccount,
+          toUserAccount: toUserAccount,
+          txnDescription: description || null,
+          feePayer: feePayer || null,
+          txnTimestamp: timestamp,
+          fee: fee || null,
+          txnType: "MINT",
+        });
+        io.emit("mintingComplete", {
+          message:
+            "Minting completed successfully. Your assets are now secure.",
+        });
+        return;
       }
 
-      console.log("incomingStakeTxns...");
-      const {
-        fromTokenAccount,
-        fromUserAccount,
-        mint,
-        toTokenAccount,
-        toUserAccount,
-        tokenAmount,
-        tokenStandard,
-      } = tokenTransfers?.[0];
+      if (Array.isArray(tokenTransfers) && tokenTransfers.length > 0) {
+        console.log("tokenTransfers nSol", tokenTransfers[0]);
 
-      await burnToken(
-        fromUserAccount,
-        tokenAmount,
-        conn,
-        mintATAAddress.toBase58()
-      );
+        const incomingStakeTxns = tokenTransfers.find(
+          (item) => item.toTokenAccount === mintATAAddress.toBase58()
+        );
 
-      console.log("Burn token done...");
-      await sendNativeToken(fromUserAccount, tokenAmount, conn, mintATAAddress);
+        if (!incomingStakeTxns) {
+          return { message: "Processing..." };
+        }
 
-      await saveTransaction(signature, "BURN");
+        console.log("incomingStakeTxns...");
+        const {
+          fromTokenAccount,
+          fromUserAccount,
+          mint,
+          toTokenAccount,
+          toUserAccount,
+          tokenAmount,
+          tokenStandard,
+        } = tokenTransfers?.[0];
+
+        await burnToken(
+          fromUserAccount,
+          tokenAmount,
+          conn,
+          mintATAAddress.toBase58()
+        );
+
+        console.log("Burn token done...");
+        await sendNativeToken(
+          fromUserAccount,
+          tokenAmount,
+          conn,
+          mintATAAddress
+        );
+
+        await saveTransaction({
+          signature: signature,
+          adminWalletAddress: fromUserAccount,
+          amount: tokenAmount,
+          fromUserAccount: fromUserAccount,
+          toUserAccount: toUserAccount,
+          txnDescription: description || null,
+          feePayer: feePayer || null,
+          txnTimestamp: timestamp,
+          fee: fee || null,
+          txnType: "BURN",
+        });
+      }
+    } else {
+      return {
+        message: "Error: This is not burning or minting operation",
+      };
     }
-  } else {
-    return {
-      message: "Error: This is not burning or minting operation",
-    };
+  } catch (error) {
+    console.log("Error processing webhook", error);
+    return { message: "Internal Server Error at webhookService" };
   }
 };
