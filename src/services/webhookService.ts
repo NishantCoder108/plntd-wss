@@ -52,10 +52,6 @@ export const processWebhook = async (
     console.log("mintATAAddress", mintATAAddress.toBase58());
 
     if (type === "TRANSFER" && AUTH_WEBHOOK_HEADERS === authorization) {
-      // const findSignature = await DBTransaction.findOne({
-      //   txnHash: signature,
-      // });
-
       const findSignature = await prisma.dBTransaction.findUnique({
         where: {
           signature,
@@ -105,7 +101,7 @@ export const processWebhook = async (
       }
 
       if (Array.isArray(tokenTransfers) && tokenTransfers.length > 0) {
-        console.log("tokenTransfers nSol", tokenTransfers[0]);
+        console.log("tokenTransfers PLNTD", tokenTransfers[0]);
 
         const incomingStakeTxns = tokenTransfers.find(
           (item) => item.toTokenAccount === mintATAAddress.toBase58()
@@ -126,17 +122,21 @@ export const processWebhook = async (
           tokenStandard,
         } = tokenTransfers?.[0];
 
+        const plntdTokenAmount = 0.5 * (tokenAmount / 1000000) * 10 ** 6; //10^6 = 1 PLNTD
+        console.log("plntdTokenAmount", plntdTokenAmount);
         await burnToken(
           fromUserAccount,
-          tokenAmount,
+          plntdTokenAmount,
           conn,
           mintATAAddress.toBase58()
         );
 
+        const solTokenAmount = (tokenAmount / 1000000) * 0.5; //10^6 = 1 PLNTD
+        console.log("solTokenAmount", solTokenAmount);
         console.log("Burn token done...");
         await sendNativeToken(
           fromUserAccount,
-          tokenAmount,
+          solTokenAmount,
           conn,
           mintATAAddress
         );
@@ -144,7 +144,7 @@ export const processWebhook = async (
         await saveTransaction({
           signature: signature,
           adminWalletAddress: fromUserAccount,
-          amount: tokenAmount,
+          amount: BigInt(plntdTokenAmount),
           fromUserAccount: fromUserAccount,
           toUserAccount: toUserAccount,
           txnDescription: description || null,
@@ -164,9 +164,3 @@ export const processWebhook = async (
     return { message: "Internal Server Error at webhookService" };
   }
 };
-
-/*
-
-
-
-*/

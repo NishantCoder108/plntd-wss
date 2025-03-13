@@ -77,25 +77,43 @@ export const burnToken = async (
   mintATAAddress: string
 ) => {
   console.log("Burning Token...");
+
   const associatedToken = await getOrCreateAssociatedTokenAccount(
     conn,
-    Keypair.fromSecretKey(bs58.decode(privateKey)),
-    new PublicKey(MINT_TOKEN_ADDRESS),
-    new PublicKey(fromUserAccount)
+    Keypair.fromSecretKey(bs58.decode(privateKey)), //payer ( private key is string here)
+    new PublicKey(MINT_TOKEN_ADDRESS), //mint address
+    new PublicKey(fromUserAccount), //comming address , which would be burn token
+    false,
+    "confirmed",
+    {
+      skipPreflight: true,
+      commitment: "confirmed",
+    },
+    TOKEN_2022_PROGRAM_ID
   );
 
   console.log("Finalizing burning...");
+  const tokenAmount = 0.5 * (amount / 1000000) * 10 ** 6; //10^6 = 1 PLNTD
+  console.log("tokenAmount", tokenAmount);
   const burnToken = await burn(
     conn, //rpc url
     Keypair.fromSecretKey(bs58.decode(privateKey)), //signer
     associatedToken.address, //burn token from user's ata
     new PublicKey(MINT_TOKEN_ADDRESS),
-    Keypair.fromSecretKey(bs58.decode(process.env.UserKey || "")), //user keypair to burn the token
-    amount * LAMPORTS_PER_SOL
+    Keypair.fromSecretKey(bs58.decode(privateKey)), //user keypair to burn the token
+    tokenAmount,
+    [Keypair.fromSecretKey(bs58.decode(privateKey))],
+    {
+      skipPreflight: true,
+      commitment: "confirmed",
+    },
+    TOKEN_2022_PROGRAM_ID
   );
 
   console.log({ burnToken });
   // await saveTransaction(burnToken, "burn");
+
+  console.log(`Burned ${amount} token from ${fromUserAccount}`);
 };
 
 export const sendNativeToken = async (
@@ -128,10 +146,10 @@ export const sendNativeToken = async (
       amount * LAMPORTS_PER_SOL
     )
   );
-  // const { blockhash } = await conn.getLatestBlockhash();
+  const { blockhash } = await conn.getLatestBlockhash();
 
-  // transaction.recentBlockhash = blockhash;
-  // transaction.feePayer = keypair.publicKey;
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = keypair.publicKey;
 
   // transaction.sign(keypair);
 
@@ -146,6 +164,7 @@ export const sendNativeToken = async (
     console.log({ error });
   }
 
+  console.log(`Transferred ${amount} token to ${fromUserAccount}`);
   // const messageV0 = new TransactionMessage({
   //     payerKey: WALLET.publicKey,
   //     recentBlockhash: blockhash,
