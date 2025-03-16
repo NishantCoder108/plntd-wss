@@ -12,7 +12,12 @@ import {
 import { Connection, PublicKey } from "@solana/web3.js";
 import { socketService } from "../utils/socket";
 import { saveTransaction } from "./saveTransaction";
-import { burnToken, mintToken, sendNativeToken } from "./transferService";
+import {
+  burnToken,
+  mintToken,
+  sendNativeToken,
+  transferPLANTDToken,
+} from "./transferService";
 import prisma from "../prisma";
 
 export const processWebhook = async (
@@ -89,7 +94,13 @@ export const processWebhook = async (
         const { amount, fromUserAccount, toUserAccount } = nativeTransfers?.[0];
         io.emit("mintingStart", { message: "Minting in Progress..." });
 
-        await mintToken(fromUserAccount, amount, conn);
+        // await mintToken(fromUserAccount, amount, conn);
+        await transferPLANTDToken(
+          fromUserAccount,
+          amount,
+          conn,
+          mintATAAddress
+        );
         await saveTransaction({
           signature: signature,
           adminWalletAddress: fromUserAccount,

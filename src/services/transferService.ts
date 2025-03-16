@@ -5,6 +5,7 @@ import {
   mintTo,
   TOKEN_2022_PROGRAM_ID,
   transfer,
+  transferChecked,
 } from "@solana/spl-token";
 import {
   Connection,
@@ -69,6 +70,57 @@ export const mintToken = async (
   console.log("Minted Token signature: ", mintedToken);
   console.log(
     `Minted ${amount * LAMPORTS_PER_SOL}  token to ${fromUserAccount}`
+  );
+};
+
+export const transferPLANTDToken = async (
+  fromUserAccount: string,
+  amount: number,
+  conn: Connection,
+  mintATAAddress: PublicKey
+) => {
+  console.log("Transferring Token...");
+
+  const toTokenAccountAdd = await getOrCreateAssociatedTokenAccount(
+    conn,
+    Keypair.fromSecretKey(bs58.decode(privateKey)), //payer ( private key is string here)
+    new PublicKey(MINT_TOKEN_ADDRESS), //mint address
+    new PublicKey(fromUserAccount), //comming address , which would be minted token
+    false,
+    "confirmed",
+    {
+      skipPreflight: true,
+      commitment: "confirmed",
+    },
+    TOKEN_2022_PROGRAM_ID
+  );
+
+  console.log("toTokenAccountAdd", toTokenAccountAdd.address.toBase58());
+
+  const tokenAmount = 2 * (amount / LAMPORTS_PER_SOL) * 10 ** 6;
+  console.log("tokenAmount", tokenAmount);
+
+  const txSignature = await transferChecked(
+    conn,
+    Keypair.fromSecretKey(bs58.decode(privateKey)),
+    mintATAAddress,
+    new PublicKey(MINT_TOKEN_ADDRESS),
+    new PublicKey(toTokenAccountAdd.address),
+    Keypair.fromSecretKey(bs58.decode(privateKey)),
+    tokenAmount,
+    6,
+    [],
+    {
+      skipPreflight: true,
+      commitment: "confirmed",
+    },
+    TOKEN_2022_PROGRAM_ID
+  );
+
+  console.log(
+    `Transferred ${
+      tokenAmount / 10 ** 6
+    } PLANTD token to ${fromUserAccount}'s associated token account ${toTokenAccountAdd.address.toBase58()} with signature ${txSignature}`
   );
 };
 
