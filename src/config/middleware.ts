@@ -15,3 +15,17 @@ export const authMiddleware = (
   }
   next();
 };
+
+export const removeConsole = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (process.env.NODE_ENV === "production") {
+    console.log = () => {};
+    console.warn = () => {};
+    console.error = () => {};
+  }
+
+  next();
+};
