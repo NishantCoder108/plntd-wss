@@ -5,6 +5,7 @@ import {
 import {
   AUTH_WEBHOOK_HEADERS,
   MINT_TOKEN_ADDRESS,
+  PLNTD_SOL_ADDRESS,
   RPC_URL,
   stakingPoolWallet,
 } from "../config/env";
@@ -28,6 +29,8 @@ export const processWebhook = async (
       timestamp,
       fee,
       signature,
+      accountData,
+      transactionError,
     } = data[0];
 
     const io = socketService.getInstance();
@@ -41,6 +44,8 @@ export const processWebhook = async (
       description,
       tokenTransfers,
       signature,
+      accountData,
+      transactionError,
     });
 
     const mintATAAddress = await getAssociatedTokenAddress(
@@ -51,7 +56,7 @@ export const processWebhook = async (
     );
     console.log("mintATAAddress", mintATAAddress.toBase58());
 
-    if (type === "TRANSFER" && AUTH_WEBHOOK_HEADERS === authorization) {
+    if (AUTH_WEBHOOK_HEADERS === authorization) {
       const findSignature = await prisma.dBTransaction.findUnique({
         where: {
           signature,
@@ -63,18 +68,22 @@ export const processWebhook = async (
         console.log("Already processed");
         return { message: "Already processed" };
       }
-      if (Array.isArray(nativeTransfers) && nativeTransfers.length > 0) {
+      if (
+        type === "TRANSFER" &&
+        Array.isArray(nativeTransfers) &&
+        nativeTransfers.length > 0
+      ) {
         const incomingTxns = nativeTransfers.find(
           (item: {
             amount: number;
             toUserAccount: string;
             fromUserAccount: string;
-          }) => item.toUserAccount === mintATAAddress.toBase58()
+          }) => item.toUserAccount === PLNTD_SOL_ADDRESS
         );
 
         console.log({ incomingTxns });
         if (!incomingTxns) {
-          return { message: "Processing..." };
+          return { message: "Not native token transaction" };
         }
 
         const { amount, fromUserAccount, toUserAccount } = nativeTransfers?.[0];
@@ -100,42 +109,83 @@ export const processWebhook = async (
         return;
       }
 
-      if (Array.isArray(tokenTransfers) && tokenTransfers.length > 0) {
-        console.log("tokenTransfers PLNTD", tokenTransfers[0]);
+      // Handle token transfers
 
-        const incomingStakeTxns = tokenTransfers.find(
-          (item) => item.toTokenAccount === mintATAAddress.toBase58()
+      if (type === "UNKNOWN" && transactionError === null && feePayer) {
+        const senderATA = await getAssociatedTokenAddress(
+          new PublicKey(MINT_TOKEN_ADDRESS),
+          new PublicKey(feePayer),
+          false,
+          TOKEN_2022_PROGRAM_ID
+        );
+        console.log("senderATA", senderATA.toBase58());
+
+        const tokenTransferTxsAccount = accountData?.find(
+          (accountItems: any) => {
+            return accountItems.tokenBalanceChanges?.some((token: any) => {
+              return (
+                token.mint === MINT_TOKEN_ADDRESS &&
+                token.tokenAccount === senderATA.toBase58() &&
+                token.userAccount === feePayer &&
+                token.rawTokenAmount.tokenAmount
+              );
+            });
+          }
         );
 
-        if (!incomingStakeTxns) {
-          return { message: "Processing..." };
+        console.log("tokenTransferTxsAccount", tokenTransferTxsAccount);
+
+        if (!tokenTransferTxsAccount) {
+          return { message: "No token transfer found..." };
         }
 
-        console.log("incomingStakeTxns...");
-        const {
-          fromTokenAccount,
-          fromUserAccount,
-          mint,
-          toTokenAccount,
-          toUserAccount,
-          tokenAmount,
-          tokenStandard,
-        } = tokenTransfers?.[0];
+        const tokenAmount = tokenTransferTxsAccount.tokenBalanceChanges?.find(
+          (token: any) => {
+            return (
+              token.mint === MINT_TOKEN_ADDRESS &&
+              token.tokenAccount === senderATA.toBase58() &&
+              token.userAccount === feePayer
+            );
+          }
+        )?.rawTokenAmount.tokenAmount;
 
-        const plntdTokenAmount = 0.5 * (tokenAmount / 1000000) * 10 ** 6; //10^6 = 1 PLNTD
-        console.log("plntdTokenAmount", plntdTokenAmount);
+        // const incomingStakeTxns = tokenTransfers.find(
+        //   (item) => item.toTokenAccount === mintATAAddress.toBa  se58()
+        // );
+        // transactionError;
+        // if (!incomingStakeTxns) {
+        //   return { message: "Processing..." };
+        // }
+
+        // console.log("incomingStakeTxns...");
+        // const {
+        //   fromTokenAccount,
+        //   fromUserAccount,
+        //   mint,
+        //   toTokenAccount,
+        //   toUserAccount,
+        //   tokenAmount,
+        //   tokenStandard,
+        // } = tokenTransfers?.[0];
+
+        console.log("tokenAmount", Math.abs(tokenAmount));
+        const actualPlntdTokenAmt = Math.abs(tokenAmount) / 1000000; //comming token: 1 plntd token , then i will burn 0.5
+        console.log("actualPlntdTokenAmt", actualPlntdTokenAmt);
+
         await burnToken(
-          fromUserAccount,
-          plntdTokenAmount,
+          feePayer,
+          Math.abs(tokenAmount),
           conn,
-          mintATAAddress.toBase58()
+          senderATA,
+          mintATAAddress
         );
 
-        const solTokenAmount = (tokenAmount / 1000000) * 0.5; //10^6 = 1 PLNTD
+        const solTokenAmount = actualPlntdTokenAmt * 0.5; //10^6 = 1 PLNTD
         console.log("solTokenAmount", solTokenAmount);
         console.log("Burn token done...");
         await sendNativeToken(
-          fromUserAccount,
+          feePayer,
+          senderATA,
           solTokenAmount,
           conn,
           mintATAAddress
@@ -143,16 +193,20 @@ export const processWebhook = async (
 
         await saveTransaction({
           signature: signature,
-          adminWalletAddress: fromUserAccount,
-          amount: BigInt(plntdTokenAmount),
-          fromUserAccount: fromUserAccount,
-          toUserAccount: toUserAccount,
+          adminWalletAddress: feePayer,
+          amount: BigInt(Math.abs(tokenAmount)),
+          fromUserAccount: senderATA.toBase58(),
+          toUserAccount: mintATAAddress.toBase58(),
           txnDescription: description || null,
-          feePayer: feePayer || null,
+          feePayer: feePayer,
           txnTimestamp: timestamp,
           fee: fee || null,
           txnType: "BURN",
         });
+
+        return {
+          message: "Transaction processed successfully",
+        };
       }
     } else {
       return {
