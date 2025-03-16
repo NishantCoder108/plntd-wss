@@ -20,6 +20,8 @@ import {
 import bs58 from "bs58";
 import {
   MINT_TOKEN_ADDRESS,
+  PLNTD_PRIVATE_KEY,
+  PLNTD_SOL_ADDRESS,
   privateKey,
   stakingPoolWallet,
 } from "../config/env";
@@ -64,7 +66,7 @@ export const mintToken = async (
     TOKEN_2022_PROGRAM_ID
   );
 
-  console.log("Minted Token : ", mintedToken);
+  console.log("Minted Token signature: ", mintedToken);
   console.log(
     `Minted ${amount * LAMPORTS_PER_SOL}  token to ${fromUserAccount}`
   );
@@ -74,34 +76,34 @@ export const burnToken = async (
   fromUserAccount: string,
   amount: number,
   conn: Connection,
-  mintATAAddress: string
+  senderATA: PublicKey,
+  mintATAAddress: PublicKey
 ) => {
   console.log("Burning Token...");
 
-  const associatedToken = await getOrCreateAssociatedTokenAccount(
-    conn,
-    Keypair.fromSecretKey(bs58.decode(privateKey)), //payer ( private key is string here)
-    new PublicKey(MINT_TOKEN_ADDRESS), //mint address
-    new PublicKey(fromUserAccount), //comming address , which would be burn token
-    false,
-    "confirmed",
-    {
-      skipPreflight: true,
-      commitment: "confirmed",
-    },
-    TOKEN_2022_PROGRAM_ID
-  );
+  // const associatedToken = await getOrCreateAssociatedTokenAccount(
+  //   conn,
+  //   Keypair.fromSecretKey(bs58.decode(privateKey)), //payer ( private key is string here)
+  //   new PublicKey(MINT_TOKEN_ADDRESS), //mint address
+  //   new PublicKey(fromUserAccount), //comming address , which would be burn token
+  //   false,
+  //   "confirmed",
+  //   {
+  //     skipPreflight: true,
+  //     commitment: "confirmed",
+  //   },
+  //   TOKEN_2022_PROGRAM_ID
+  // );
 
   console.log("Finalizing burning...");
-  const tokenAmount = 0.5 * (amount / 1000000) * 10 ** 6; //10^6 = 1 PLNTD
-  console.log("tokenAmount", tokenAmount);
+
   const burnToken = await burn(
     conn, //rpc url
     Keypair.fromSecretKey(bs58.decode(privateKey)), //signer
-    associatedToken.address, //burn token from user's ata
+    new PublicKey(mintATAAddress), //burn token from user's ata
     new PublicKey(MINT_TOKEN_ADDRESS),
     Keypair.fromSecretKey(bs58.decode(privateKey)), //user keypair to burn the token
-    tokenAmount,
+    amount,
     [Keypair.fromSecretKey(bs58.decode(privateKey))],
     {
       skipPreflight: true,
@@ -113,16 +115,17 @@ export const burnToken = async (
   console.log({ burnToken });
   // await saveTransaction(burnToken, "burn");
 
-  console.log(`Burned ${amount} token from ${fromUserAccount}`);
+  console.log(`Burned ${amount} token from ${mintATAAddress}`);
 };
 
 export const sendNativeToken = async (
-  fromUserAccount: string,
+  feePayer: string,
+  senderATA: PublicKey,
   amount: number,
   conn: Connection,
   mintATAAddress: PublicKey
 ) => {
-  const keypair = Keypair.fromSecretKey(bs58.decode(privateKey));
+  const keypair = Keypair.fromSecretKey(bs58.decode(PLNTD_PRIVATE_KEY));
 
   // const transaction = new Transaction().add(
   //     SystemProgram.transfer({
@@ -131,73 +134,49 @@ export const sendNativeToken = async (
   //         lamports: amount * LAMPORTS_PER_SOL,
   //     })
   // );
-  const userATA = await getOrCreateAssociatedTokenAccount(
-    conn,
-    Keypair.fromSecretKey(bs58.decode(privateKey)),
-    new PublicKey(MINT_TOKEN_ADDRESS),
-    new PublicKey(fromUserAccount)
-  );
+  // const userATA = await getOrCreateAssociatedTokenAccount(
+  //   conn,
+  //   Keypair.fromSecretKey(bs58.decode(privateKey)),
+  //   new PublicKey(MINT_TOKEN_ADDRESS),
+  //   new PublicKey(fromUserAccount)
+  // );
+
+  // const transaction = new Transaction().add(
+  //   createTransferInstruction(
+  //     mintATAAddress, //source ATA
+  //     senderATA, //destination ATA
+  //     keypair.publicKey, //payer
+  //     amount * LAMPORTS_PER_SOL
+  //   )
+  // );
 
   const transaction = new Transaction().add(
-    createTransferInstruction(
-      mintATAAddress, //source ATA
-      userATA.address, //destination ATA
-      keypair.publicKey, //payer
-      amount * LAMPORTS_PER_SOL
-    )
+    SystemProgram.transfer({
+      fromPubkey: new PublicKey(PLNTD_SOL_ADDRESS),
+      toPubkey: new PublicKey(feePayer),
+      lamports: Number(amount) * LAMPORTS_PER_SOL,
+    })
   );
   const { blockhash } = await conn.getLatestBlockhash();
 
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = keypair.publicKey;
 
-  // transaction.sign(keypair);
-
-  console.log({ transaction });
-
   try {
-    const signature = await sendAndConfirmTransaction(conn, transaction, [
-      keypair,
-    ]);
-    console.log({ signature });
+    const signature = await sendAndConfirmTransaction(
+      conn,
+      transaction,
+      [keypair],
+      {
+        commitment: "confirmed",
+        skipPreflight: true,
+      }
+    );
+    console.log("Transaction sent successfully", { signature });
+
+    console.log(`Transferred ${amount}SOL token to ${feePayer}`);
   } catch (error) {
-    console.log({ error });
+    console.log("Transaction failed at sendNativeToken", { error });
+    console.log(`Failed to transfer ${amount}SOL token to ${feePayer}`);
   }
-
-  console.log(`Transferred ${amount} token to ${fromUserAccount}`);
-  // const messageV0 = new TransactionMessage({
-  //     payerKey: WALLET.publicKey,
-  //     recentBlockhash: blockhash,
-  //     instructions: [burnIx]
-  //   }).compileToV0Message();
-  //   const transac = new VersionedTransaction(messageV0);
-
-  // const signature = await conn.sendTransaction(transac);
-  // console.log({ signature });
-
-  //     const serializedTransaction = req.body.message;
-
-  //     console.log("before serialise")
-  //     console.log(serializedTransaction);
-
-  //     const tx = Transaction.from(Buffer.from(serializedTransaction))
-  //     console.log("after serialise")
-
-  //     console.log(bs58)
-  //     const keyPair = Keypair.fromSecretKey(bs58.decode(process.env.PRIVATE_KEY as string));
-
-  //     const {blockhash} = await conn.getLatestBlockhash();
-  //     tx.blockhash = blockhash
-  //     tx.feePayer = keyPair.publicKey
-
-  //     tx.sign(keyPair)
-
-  //     const signature = await connection.sendTransaction(tx, [keyPair])
-  //     console.log(signature)
 };
-
-/**
- * Two types of token happen :
- * 1. tokenTransfers : when someone send "hSol" token to mint's associated token
- * 2. nativeTransfers : when someone send "sol" token to staked token
- */
