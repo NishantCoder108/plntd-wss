@@ -6,3 +6,5 @@ export const ATA_ADDRESS = process.env.ATA_ADDRESS as string;
 export const AUTH_WEBHOOK_HEADERS = process.env.AUTH_WEBHOOK_HEADERS as string;
 export const MONGO_URI = process.env.MONGO_URI as string;
 export const PORT = process.env.PORT || 3000;
+export const PLNTD_SOL_ADDRESS = process.env.PLNTD_SOL_ADDRESS as string;
+export const PLNTD_PRIVATE_KEY = process.env.PLNTD_PRIVATE_KEY as string;
