@@ -1,4 +1,4 @@
-export const stakingPoolWallet = process.env.PUBLICKEY as string;
+export const stakingPoolWallet = process.env.ADMIN_SOL_ADDRESS as string;
 export const privateKey = process.env.PRIVATEKEY as string;
 export const RPC_URL = process.env.RPCURL || "https://api.devnet.solana.com";
 export const MINT_TOKEN_ADDRESS = process.env.MINT_TOKEN_ADDRESS as string;
@@ -9,3 +9,4 @@ export const PORT = process.env.PORT || 3000;
 export const PLNTD_SOL_ADDRESS = process.env.PLNTD_SOL_ADDRESS as string;
 export const PLNTD_PRIVATE_KEY = process.env.PLNTD_PRIVATE_KEY as string;
 export const NODE_ENV = process.env.NODE_ENV as string;
+export const VAULT = process.env.ADMIN_SOL_ADDRESS as string;
