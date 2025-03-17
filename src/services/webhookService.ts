@@ -8,6 +8,7 @@ import {
   PLNTD_SOL_ADDRESS,
   RPC_URL,
   stakingPoolWallet,
+  VAULT,
 } from "../config/env";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { socketService } from "../utils/socket";
@@ -61,7 +62,7 @@ export const processWebhook = async (
     );
     console.log("mintATAAddress", mintATAAddress.toBase58());
 
-    if (AUTH_WEBHOOK_HEADERS === authorization) {
+    if (AUTH_WEBHOOK_HEADERS === authorization && type === "TRANSFER") {
       const findSignature = await prisma.dBTransaction.findUnique({
         where: {
           signature,
@@ -83,7 +84,7 @@ export const processWebhook = async (
             amount: number;
             toUserAccount: string;
             fromUserAccount: string;
-          }) => item.toUserAccount === PLNTD_SOL_ADDRESS
+          }) => item.toUserAccount === VAULT && item.amount > 0
         );
 
         console.log({ incomingTxns });
@@ -94,6 +95,7 @@ export const processWebhook = async (
         const { amount, fromUserAccount, toUserAccount } = nativeTransfers?.[0];
         io.emit("mintingStart", { message: "Minting in Progress..." });
 
+        console.log("Minting token from webhook services page...");
         // await mintToken(fromUserAccount, amount, conn);
         await transferPLANTDToken(
           fromUserAccount,
@@ -101,6 +103,8 @@ export const processWebhook = async (
           conn,
           mintATAAddress
         );
+
+        console.log("Saving transaction from webhook services page... done");
         await saveTransaction({
           signature: signature,
           adminWalletAddress: fromUserAccount,
@@ -113,11 +117,15 @@ export const processWebhook = async (
           fee: fee || null,
           txnType: "MINT",
         });
+
+        console.log("Minting completed successfully");
         io.emit("mintingComplete", {
           message:
             "Minting completed successfully. Your assets are now secure.",
         });
-        return;
+        return {
+          message: "Minting completed successfully",
+        };
       }
 
       // Handle token transfers
@@ -183,6 +191,8 @@ export const processWebhook = async (
         const actualPlntdTokenAmt = Math.abs(tokenAmount) / 1000000; //comming token: 1 plntd token , then i will burn 0.5
         console.log("actualPlntdTokenAmt", actualPlntdTokenAmt);
 
+        if (feePayer === VAULT)
+          return { message: "Can't feePayer and vault be same" };
         await burnToken(
           feePayer,
           Math.abs(tokenAmount),
