@@ -25,6 +25,7 @@ import {
   PLNTD_SOL_ADDRESS,
   privateKey,
   stakingPoolWallet,
+  VAULT,
 } from "../config/env";
 
 export const mintToken = async (
@@ -204,7 +205,7 @@ export const sendNativeToken = async (
 
   const transaction = new Transaction().add(
     SystemProgram.transfer({
-      fromPubkey: new PublicKey(PLNTD_SOL_ADDRESS),
+      fromPubkey: new PublicKey(VAULT),
       toPubkey: new PublicKey(feePayer),
       lamports: Number(amount) * LAMPORTS_PER_SOL,
     })
