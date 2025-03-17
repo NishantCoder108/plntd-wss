@@ -20,6 +20,7 @@ import {
   transferPLANTDToken,
 } from "./transferService";
 import prisma from "../prisma";
+import { parseTransaction } from "../utils/transactions";
 
 export const processWebhook = async (
   data: any,
@@ -54,14 +55,6 @@ export const processWebhook = async (
       transactionError,
     });
 
-    const mintATAAddress = await getAssociatedTokenAddress(
-      new PublicKey(MINT_TOKEN_ADDRESS),
-      new PublicKey(stakingPoolWallet),
-      false,
-      TOKEN_2022_PROGRAM_ID
-    );
-    console.log("mintATAAddress", mintATAAddress.toBase58());
-
     if (AUTH_WEBHOOK_HEADERS === authorization && type === "TRANSFER") {
       const findSignature = await prisma.dBTransaction.findUnique({
         where: {
@@ -71,11 +64,28 @@ export const processWebhook = async (
 
       console.log({ findSignature });
       if (findSignature) {
-        console.log("Already processed");
-        return { message: "Already processed" };
+        console.log("This transaction has already been processed.");
+        return { message: "This transaction has already been processed." };
       }
+
+      const parsedTransaction = parseTransaction(description);
+
+      if (!parsedTransaction) {
+        console.log("Invalid transaction");
+        return { message: "Invalid transaction" };
+      }
+
+      const { sender, amount, token, recipient } = parsedTransaction;
+
+      const mintATAAddress = await getAssociatedTokenAddress(
+        new PublicKey(MINT_TOKEN_ADDRESS),
+        new PublicKey(stakingPoolWallet),
+        false,
+        TOKEN_2022_PROGRAM_ID
+      );
+      console.log("mintATAAddress", mintATAAddress.toBase58());
       if (
-        type === "TRANSFER" &&
+        token === "SOL" &&
         Array.isArray(nativeTransfers) &&
         nativeTransfers.length > 0
       ) {
@@ -86,16 +96,22 @@ export const processWebhook = async (
             fromUserAccount: string;
           }) => item.toUserAccount === VAULT && item.amount > 0
         );
-
         console.log({ incomingTxns });
+
         if (!incomingTxns) {
-          return { message: "Not native token transaction" };
+          return {
+            message: "This transaction does not involve a native token.",
+          };
         }
 
-        const { amount, fromUserAccount, toUserAccount } = nativeTransfers?.[0];
+        const { amount, fromUserAccount, toUserAccount } = incomingTxns;
+
         io.emit("mintingStart", { message: "Minting in Progress..." });
 
-        console.log("Minting token from webhook services page...");
+        console.log(
+          "Initiating the minting/transfer process for the token from the webhook service."
+        );
+
         // await mintToken(fromUserAccount, amount, conn);
         await transferPLANTDToken(
           fromUserAccount,
@@ -104,7 +120,7 @@ export const processWebhook = async (
           mintATAAddress
         );
 
-        console.log("Saving transaction from webhook services page... done");
+        console.log("Transfer token completed...");
         await saveTransaction({
           signature: signature,
           adminWalletAddress: fromUserAccount,
@@ -117,107 +133,87 @@ export const processWebhook = async (
           fee: fee || null,
           txnType: "MINT",
         });
+        console.log(
+          "Transaction has been successfully saved from the webhook service."
+        );
 
-        console.log("Minting completed successfully");
         io.emit("mintingComplete", {
           message:
             "Minting completed successfully. Your assets are now secure.",
         });
+        console.log("Minting completed successfully");
         return {
           message: "Minting completed successfully",
         };
       }
 
-      // Handle token transfers
+      // Handle PLANTD token transfers
 
-      if (type === "UNKNOWN" && transactionError === null && feePayer) {
-        const senderATA = await getAssociatedTokenAddress(
-          new PublicKey(MINT_TOKEN_ADDRESS),
-          new PublicKey(feePayer),
-          false,
-          TOKEN_2022_PROGRAM_ID
+      if (
+        token === MINT_TOKEN_ADDRESS &&
+        Array.isArray(tokenTransfers) &&
+        tokenTransfers.length > 0
+      ) {
+        const incomingTxns = tokenTransfers.find(
+          (item: {
+            fromTokenAccount: string;
+            fromUserAccount: string;
+            mint: string;
+            toTokenAccount: string;
+            toUserAccount: string;
+            tokenAmount: number;
+            tokenStandard: string;
+          }) =>
+            item.toUserAccount === VAULT &&
+            item.mint === MINT_TOKEN_ADDRESS &&
+            item.tokenAmount > 0
         );
-        console.log("senderATA", senderATA.toBase58());
+        console.log({ incomingTxns });
 
-        const tokenTransferTxsAccount = accountData?.find(
-          (accountItems: any) => {
-            return accountItems.tokenBalanceChanges?.some((token: any) => {
-              return (
-                token.mint === MINT_TOKEN_ADDRESS &&
-                token.tokenAccount === senderATA.toBase58() &&
-                token.userAccount === feePayer &&
-                token.rawTokenAmount.tokenAmount
-              );
-            });
-          }
-        );
-
-        console.log("tokenTransferTxsAccount", tokenTransferTxsAccount);
-
-        if (!tokenTransferTxsAccount) {
-          return { message: "No token transfer found..." };
+        if (!incomingTxns) {
+          return {
+            message: "This transaction does not involve a PLANTD token.",
+          };
         }
 
-        const tokenAmount = tokenTransferTxsAccount.tokenBalanceChanges?.find(
-          (token: any) => {
-            return (
-              token.mint === MINT_TOKEN_ADDRESS &&
-              token.tokenAccount === senderATA.toBase58() &&
-              token.userAccount === feePayer
-            );
-          }
-        )?.rawTokenAmount.tokenAmount;
+        const {
+          fromUserAccount,
+          fromTokenAccount,
+          tokenAmount,
+          mint,
+          toTokenAccount,
+          toUserAccount,
+          tokenStandard,
+        } = incomingTxns;
 
-        // const incomingStakeTxns = tokenTransfers.find(
-        //   (item) => item.toTokenAccount === mintATAAddress.toBa  se58()
-        // );
-        // transactionError;
-        // if (!incomingStakeTxns) {
-        //   return { message: "Processing..." };
-        // }
+        console.log("Burning Token...");
 
-        // console.log("incomingStakeTxns...");
-        // const {
-        //   fromTokenAccount,
-        //   fromUserAccount,
-        //   mint,
-        //   toTokenAccount,
-        //   toUserAccount,
-        //   tokenAmount,
-        //   tokenStandard,
-        // } = tokenTransfers?.[0];
-
-        console.log("tokenAmount", Math.abs(tokenAmount));
-        const actualPlntdTokenAmt = Math.abs(tokenAmount) / 1000000; //comming token: 1 plntd token , then i will burn 0.5
-        console.log("actualPlntdTokenAmt", actualPlntdTokenAmt);
-
-        if (feePayer === VAULT)
-          return { message: "Can't feePayer and vault be same" };
         await burnToken(
-          feePayer,
-          Math.abs(tokenAmount),
           conn,
-          senderATA,
-          mintATAAddress
+          fromUserAccount,
+          tokenAmount,
+          fromTokenAccount,
+          toTokenAccount,
+          mint
         );
 
-        const solTokenAmount = actualPlntdTokenAmt * 0.5; //10^6 = 1 PLNTD
-        console.log("solTokenAmount", solTokenAmount);
-        console.log("Burn token done...");
+        const solTokenAmount = tokenAmount * 0.5; //10^6 = 1 PLANTD
+
+        console.log("Sending Native Token...");
         await sendNativeToken(
-          feePayer,
-          senderATA,
+          fromUserAccount,
+          fromTokenAccount,
           solTokenAmount,
-          conn,
-          mintATAAddress
+          conn
         );
 
+        console.log("Saving Transaction...");
         await saveTransaction({
           signature: signature,
-          adminWalletAddress: feePayer,
-          amount: BigInt(Math.abs(tokenAmount)),
-          fromUserAccount: senderATA.toBase58(),
-          toUserAccount: mintATAAddress.toBase58(),
+          adminWalletAddress: fromUserAccount,
+          amount: BigInt(tokenAmount * 10 ** 6),
+          fromUserAccount: fromUserAccount,
+          toUserAccount: toUserAccount,
           txnDescription: description || null,
           feePayer: feePayer,
           txnTimestamp: timestamp,
@@ -225,8 +221,9 @@ export const processWebhook = async (
           txnType: "BURN",
         });
 
+        console.log("Transaction has been successfully saved.");
         return {
-          message: "Transaction processed successfully",
+          message: "The transaction has been successfully processed.",
         };
       }
     } else {
@@ -235,7 +232,7 @@ export const processWebhook = async (
       };
     }
   } catch (error) {
-    console.log("Error processing webhook", error);
+    console.log("Error processing at wehook service page :", error);
     return { message: "Internal Server Error at webhookService" };
   }
 };

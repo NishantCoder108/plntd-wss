@@ -126,38 +126,23 @@ export const transferPLANTDToken = async (
 };
 
 export const burnToken = async (
+  conn: Connection,
   fromUserAccount: string,
   amount: number,
-  conn: Connection,
-  senderATA: PublicKey,
-  mintATAAddress: PublicKey
+  fromTokenAccount: string,
+  toTokenAccount: string,
+  mint: string
 ) => {
-  console.log("Burning Token...");
-
-  // const associatedToken = await getOrCreateAssociatedTokenAccount(
-  //   conn,
-  //   Keypair.fromSecretKey(bs58.decode(privateKey)), //payer ( private key is string here)
-  //   new PublicKey(MINT_TOKEN_ADDRESS), //mint address
-  //   new PublicKey(fromUserAccount), //comming address , which would be burn token
-  //   false,
-  //   "confirmed",
-  //   {
-  //     skipPreflight: true,
-  //     commitment: "confirmed",
-  //   },
-  //   TOKEN_2022_PROGRAM_ID
-  // );
-
   console.log("Finalizing burning...");
 
   const burnToken = await burn(
-    conn, //rpc url
-    Keypair.fromSecretKey(bs58.decode(privateKey)), //signer
-    new PublicKey(mintATAAddress), //burn token from user's ata
+    conn,
+    Keypair.fromSecretKey(bs58.decode(privateKey)),
+    new PublicKey(toTokenAccount),
     new PublicKey(MINT_TOKEN_ADDRESS),
-    Keypair.fromSecretKey(bs58.decode(privateKey)), //user keypair to burn the token
-    amount,
-    [Keypair.fromSecretKey(bs58.decode(privateKey))],
+    Keypair.fromSecretKey(bs58.decode(privateKey)),
+    amount * 10 ** 6,
+    [],
     {
       skipPreflight: true,
       commitment: "confirmed",
@@ -166,47 +151,24 @@ export const burnToken = async (
   );
 
   console.log({ burnToken });
-  // await saveTransaction(burnToken, "burn");
 
-  console.log(`Burned ${amount} token from ${mintATAAddress}`);
+  console.log(
+    `Successfully burned ${amount} tokens from the associated token account at ${toTokenAccount}`
+  );
 };
 
 export const sendNativeToken = async (
-  feePayer: string,
+  fromUserAccount: string,
   senderATA: PublicKey,
   amount: number,
-  conn: Connection,
-  mintATAAddress: PublicKey
+  conn: Connection
 ) => {
-  const keypair = Keypair.fromSecretKey(bs58.decode(PLNTD_PRIVATE_KEY));
-
-  // const transaction = new Transaction().add(
-  //     SystemProgram.transfer({
-  //         fromPubkey: mintATAAddress,
-  //         toPubkey: new PublicKey(fromUserAccount),
-  //         lamports: amount * LAMPORTS_PER_SOL,
-  //     })
-  // );
-  // const userATA = await getOrCreateAssociatedTokenAccount(
-  //   conn,
-  //   Keypair.fromSecretKey(bs58.decode(privateKey)),
-  //   new PublicKey(MINT_TOKEN_ADDRESS),
-  //   new PublicKey(fromUserAccount)
-  // );
-
-  // const transaction = new Transaction().add(
-  //   createTransferInstruction(
-  //     mintATAAddress, //source ATA
-  //     senderATA, //destination ATA
-  //     keypair.publicKey, //payer
-  //     amount * LAMPORTS_PER_SOL
-  //   )
-  // );
+  const keypair = Keypair.fromSecretKey(bs58.decode(privateKey));
 
   const transaction = new Transaction().add(
     SystemProgram.transfer({
       fromPubkey: new PublicKey(VAULT),
-      toPubkey: new PublicKey(feePayer),
+      toPubkey: new PublicKey(fromUserAccount),
       lamports: Number(amount) * LAMPORTS_PER_SOL,
     })
   );
@@ -225,11 +187,13 @@ export const sendNativeToken = async (
         skipPreflight: true,
       }
     );
-    console.log("Transaction sent successfully", { signature });
 
-    console.log(`Transferred ${amount}SOL token to ${feePayer}`);
+    console.log(
+      `Transferred ${amount}SOL token to ${fromUserAccount} with signature :${signature}`
+    );
   } catch (error) {
-    console.log("Transaction failed at sendNativeToken", { error });
-    console.log(`Failed to transfer ${amount}SOL token to ${feePayer}`);
+    console.log(
+      `Failed to transfer ${amount}SOL token to ${fromUserAccount} with error :${error}`
+    );
   }
 };
