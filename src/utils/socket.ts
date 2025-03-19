@@ -1,35 +1,35 @@
-import { Server as SocketIOServer } from "socket.io";
-
 import { Server as HTTPServer } from "http";
+import { Server as SocketIOServer, Socket } from "socket.io";
 
-class SocketService {
-  private io: SocketIOServer | null = null;
+let io: SocketIOServer | null = null;
 
-  initialize(server: HTTPServer) {
-    if (this.io) {
-      throw new Error("Socket.io is already initialized");
-    }
-
-    this.io = new SocketIOServer(server);
-
-    this.io.on("connection", (socket) => {
-      console.log("Client Connected:", socket.id);
-
-      socket.on("disconnect", () => {
-        console.log("Client Disconnected", socket.id);
+export const socketService = {
+  initialize: (server: HTTPServer) => {
+    if (!io) {
+      io = new SocketIOServer(server, {
+        cors: { origin: "*" },
+        // cors: {
+        //   origin: process.env.FRONTEND_URL || "http://localhost:3000",
+        //   methods: ["GET", "POST"],
+        // },
       });
-    });
 
-    return this.io;
-  }
+      console.log("✅ Socket.IO initialized");
 
-  getInstance() {
-    if (!this.io) {
-      throw new Error("Socket.io is not initialized");
+      io.on("connection", (socket: Socket) => {
+        console.log(`⚡ New client connected: ${socket.id}`);
+
+        socket.on("disconnect", () => {
+          console.log(`❌ Client disconnected: ${socket.id}`);
+        });
+      });
     }
+  },
 
-    return this.io;
-  }
-}
-
-export const socketService = new SocketService();
+  getSocketInstance: (): SocketIOServer => {
+    if (!io) {
+      throw new Error("Socket.IO is not initialized!");
+    }
+    return io;
+  },
+};

@@ -5,12 +5,11 @@ import {
 import {
   AUTH_WEBHOOK_HEADERS,
   MINT_TOKEN_ADDRESS,
-  PLNTD_SOL_ADDRESS,
   RPC_URL,
   stakingPoolWallet,
   VAULT,
 } from "../config/env";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { socketService } from "../utils/socket";
 import { saveTransaction } from "./saveTransaction";
 import {
@@ -21,11 +20,13 @@ import {
 } from "./transferService";
 import prisma from "../prisma";
 import { parseTransaction } from "../utils/transactions";
+import { formatString } from "../utils/util";
 
 export const processWebhook = async (
   data: any,
   authorization: string | undefined
 ) => {
+  const io = socketService.getSocketInstance();
   try {
     const {
       type,
@@ -40,7 +41,6 @@ export const processWebhook = async (
       transactionError,
     } = data[0];
 
-    const io = socketService.getInstance();
     const conn = new Connection(RPC_URL);
 
     console.log({
@@ -99,19 +99,36 @@ export const processWebhook = async (
         console.log({ incomingTxns });
 
         if (!incomingTxns) {
+          io.emit("TOKEN_TRANSFER_FAILED", {
+            status: "FAILED",
+            message: `Token purchase failed for ${formatString(
+              feePayer,
+              5,
+              5
+            )}. Try again.`,
+          });
+
           return {
-            message: "This transaction does not involve a native token.",
+            message:
+              "There is no native token associated with this transaction.",
           };
         }
 
         const { amount, fromUserAccount, toUserAccount } = incomingTxns;
 
-        io.emit("mintingStart", { message: "Minting in Progress..." });
-
         console.log(
           "Initiating the minting/transfer process for the token from the webhook service."
         );
 
+        const transferAmount = 2 * (amount / LAMPORTS_PER_SOL);
+        io.emit("TRANSFER_PLANTD_TOKEN", {
+          status: "PENDING",
+          message: `Transferring ${transferAmount} PLANTD to ${formatString(
+            fromUserAccount,
+            5,
+            5
+          )}`,
+        });
         // await mintToken(fromUserAccount, amount, conn);
         await transferPLANTDToken(
           fromUserAccount,
@@ -133,17 +150,21 @@ export const processWebhook = async (
           fee: fee || null,
           txnType: "MINT",
         });
+
+        io.emit("TOKEN_TRANSFER_SUCCESS", {
+          status: "SUCCESS",
+          message: `Token purchase successful for ${formatString(
+            fromUserAccount,
+            5,
+            5
+          )}!`,
+        });
+
         console.log(
           "Transaction has been successfully saved from the webhook service."
         );
-
-        io.emit("mintingComplete", {
-          message:
-            "Minting completed successfully. Your assets are now secure.",
-        });
-        console.log("Minting completed successfully");
         return {
-          message: "Minting completed successfully",
+          message: "Minting/Transferring completed successfully",
         };
       }
 
@@ -171,8 +192,12 @@ export const processWebhook = async (
         console.log({ incomingTxns });
 
         if (!incomingTxns) {
+          io.emit("TOKEN_TRANSFER_FAILED", {
+            status: "FAILED",
+            message: `Token sale failed for ${formatString(feePayer, 5, 5)}`,
+          });
           return {
-            message: "This transaction does not involve a PLANTD token.",
+            message: "No PLANTD token found in this transaction.",
           };
         }
 
@@ -188,6 +213,10 @@ export const processWebhook = async (
 
         console.log("Burning Token...");
 
+        io.emit("TOKEN_BURN_STARTED", {
+          status: "PENDING",
+          message: `Selling ${tokenAmount} PLANTD...`,
+        });
         await burnToken(
           conn,
           fromUserAccount,
@@ -199,6 +228,14 @@ export const processWebhook = async (
 
         const solTokenAmount = tokenAmount * 0.5; //10^6 = 1 PLANTD
 
+        io.emit("TRANSFER_NATIVE_TOKEN", {
+          status: "PENDING",
+          message: `Transferring ${solTokenAmount} SOL to ${formatString(
+            fromUserAccount,
+            5,
+            5
+          )}`,
+        });
         console.log("Sending Native Token...");
         await sendNativeToken(
           fromUserAccount,
@@ -221,6 +258,10 @@ export const processWebhook = async (
           txnType: "BURN",
         });
 
+        io.emit("TOKEN_TRANSFER_SUCCESS", {
+          status: "SUCCESS",
+          message: "PLANTD token sold successfully!",
+        });
         console.log("Transaction has been successfully saved.");
         return {
           message: "The transaction has been successfully processed.",
@@ -232,6 +273,11 @@ export const processWebhook = async (
       };
     }
   } catch (error) {
+    io.emit("TOKEN_TRANSFER_FAILED", {
+      status: "FAILED",
+      message: `Transaction failed. Please try again.`,
+    });
+
     console.log("Error processing at wehook service page :", error);
     return { message: "Internal Server Error at webhookService" };
   }

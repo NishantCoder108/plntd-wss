@@ -1,5 +1,4 @@
 import express from "express";
-// import transactionRoutes from "./routes/transactionRoutes";
 import webhookRoutes from "./routes/webhookRoutes";
 import { authMiddleware, removeConsole } from "./config/middleware";
 
@@ -9,7 +8,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/webhook", removeConsole, authMiddleware, webhookRoutes);
-// app.use("/transaction", transactionRoutes);
 
 app.get("/test", (req, res) => {
   res.send("Hello World!");
