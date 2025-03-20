@@ -7,11 +7,11 @@ export const socketService = {
   initialize: (server: HTTPServer) => {
     if (!io) {
       io = new SocketIOServer(server, {
-        cors: { origin: "*" },
-        // cors: {
-        //   origin: process.env.FRONTEND_URL || "http://localhost:3000",
-        //   methods: ["GET", "POST"],
-        // },
+        // cors: { origin: "*" },
+        cors: {
+          origin: process.env.FRONTEND_URL,
+          methods: ["GET", "POST"],
+        },
       });
 
       console.log("✅ Socket.IO initialized");
