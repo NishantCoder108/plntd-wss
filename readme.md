@@ -1,2 +1,1 @@
-# Steps to implement socket
-1. 
+**plntd-wss repository is interacting with blockchain where when transaction happen to particular address then websocket will trigger (here i am using Helius services) then  i will check all condition if everything is fine then we mint the token for comming address**
